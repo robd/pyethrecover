@@ -8,16 +8,10 @@ import json
 import getpass
 import binascii
 import pbkdf2 as PBKDF2
-from bitcoin import *
 from utils import decode_hex, encode_hex
 import traceback
 from joblib import Parallel, delayed
 import itertools
-
-try:
-    from urllib2 import Request, urlopen
-except ImportError:
-    from urllib.request import Request, urlopen
 
 from optparse import OptionParser
 
@@ -55,46 +49,12 @@ def sha3(x):
 def pbkdf2(x):
     return PBKDF2._pbkdf2(x, x, 2000)[:16]
 
-
-# Makes a request to a given URL (first arg) and optional params (second arg)
-def make_request(url, data, headers):
-    req = Request(url, data, headers)
-    return urlopen(req).read().strip()
-
-
 # Prefer openssl because it's more well-tested and reviewed; otherwise,
 # use pybitcointools' internal ecdsa implementation
 try:
     import openssl
 except:
     openssl = None
-
-
-def openssl_tx_sign(tx, priv):
-    if len(priv) == 64:
-        priv = priv.decode('hex')
-    if openssl:
-        k = openssl.CKey()
-        k.generate(priv)
-        u = k.sign(bitcoin.bin_txhash(tx))
-        return u.encode('hex')
-    else:
-        return ecdsa_tx_sign(tx, priv)
-
-
-def secure_sign(tx, i, priv):
-    i = int(i)
-    if not re.match('^[0-9a-fA-F]*$', tx):
-        return sign(tx.encode('hex'), i, priv).decode('hex')
-    if len(priv) <= 33:
-        priv = priv.encode('hex')
-    pub = privkey_to_pubkey(priv)
-    address = pubkey_to_address(pub)
-    signing_tx = signature_form(tx, i, mk_pubkey_script(address))
-    sig = openssl_tx_sign(signing_tx, priv)
-    txobj = deserialize(tx)
-    txobj["ins"][i]["script"] = serialize_script([sig, pub])
-    return serialize(txobj)
 
 
 def secure_privtopub(priv):
@@ -158,18 +118,6 @@ def ask_for_password():
 
 class PasswordFoundException(Exception):
     pass
-
-def crack(wallet_filename, grammar):
-    with file(wallet_filename, 'r') as f:
-        t = f.read()
-    w = json.loads(t)
-    try:
-        Parallel(n_jobs=-1)(delayed(attempt)(w, pw) for pw in generate_all(grammar,''))
-    except Exception, e:
-        traceback.print_exc()
-        while True:
-            sys.stdout.write('\a')
-            sys.stdout.flush()
 
 def generate_all(el, tr):
     if el:
